@@ -601,7 +601,7 @@ class GCSFileSystem(AsyncFileSystem):
                     res = item
                     break
             if res is None:
-                raise FileNotFoundError
+                raise FileNotFoundError(path)
         return self._process_object(bucket, res)
 
     async def _list_objects(self, path):
