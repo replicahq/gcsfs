@@ -590,15 +590,18 @@ class GCSFileSystem(AsyncFileSystem):
             raise FileNotFoundError(path)
 
         res = None
-        # Using a list with a prefix only requires storage.objects.list permissions, rather than
-        # storage.objects.get.
-        resp = await self._call("GET", "b/{}/o/", bucket, prefix=key, json_out=True)
-        for item in resp.get("items", []):
-            if item['name'] == key:
-                res = item
-                break
-        if res is None:
-            raise FileNotFoundError
+        # Work around various permission settings. Prefer an object get (storage.objects.get), but
+        # fall back to a bucket list + filter to object name (storage.objects.list).
+        try:
+            res = await self._call("GET", "b/{}/o/{}", bucket, key, json_out=True)
+        except OSError: # Forbidden
+            resp = await self._call("GET", "b/{}/o/", bucket, prefix=key, json_out=True)
+            for item in resp.get("items", []):
+                if item['name'] == key:
+                    res = item
+                    break
+            if res is None:
+                raise FileNotFoundError(path)
         return self._process_object(bucket, res)
 
     async def _list_objects(self, path, prefix=""):
