@@ -589,11 +589,17 @@ class GCSFileSystem(AsyncFileSystem):
             # listing.
             raise FileNotFoundError(path)
 
-        result = self._process_object(
-            bucket, await self._call("GET", "b/{}/o/{}", bucket, key, json_out=True)
-        )
-
-        return result
+        res = None
+        # Using a list with a prefix only requires storage.objects.list permissions, rather than
+        # storage.objects.get.
+        resp = await self._call("GET", "b/{}/o/", bucket, prefix=key, json_out=True)
+        for item in resp.get("items", []):
+            if item['name'] == key:
+                res = item
+                break
+        if res is None:
+            raise FileNotFoundError
+        return self._process_object(bucket, res)
 
     async def _list_objects(self, path, prefix=""):
         bucket, key = self.split_path(path)
@@ -799,7 +805,8 @@ class GCSFileSystem(AsyncFileSystem):
             return await self._get_object(path)
         except FileNotFoundError:
             pass
-        out = await self._ls(path, detail=True, **kwargs)
+        kwargs['detail'] = True # Force to true for info
+        out = await self._ls(path, **kwargs)
         out0 = [o for o in out if o["name"].rstrip("/") == path]
         if out0:
             # exact hit
